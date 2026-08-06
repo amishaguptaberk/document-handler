@@ -1,0 +1,27 @@
+[project]
+name = "document-handler"
+version = "0.1.0"
+description = "Document handler data model layer"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "flask>=3.0",
+    "pdfminer.six>=20240706",
+    "pymupdf>=1.24",
+    "pytesseract>=0.3.10",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Document Handler</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    :root {
+      --bg: #f3f1ec;
+      --ink: #1c1b19;
+      --muted: #5c574f;
+      --line: #d5d0c6;
+      --panel: #fffcf7;
+      --accent: #0f5c4c;
+      --accent-soft: #d7ebe4;
+      --warn: #8a3b12;
+      --hl: rgba(255, 196, 0, 0.45);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.45 "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #efe6d6 0%, transparent 40%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 252, 247, 0.9);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      letter-spacing: 0.02em;
+    }
+    header p {
+      margin: 0.25rem 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 320px 1fr 340px;
+      gap: 1rem;
+      padding: 1rem;
+      min-height: calc(100vh - 88px);
+    }
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 1rem;
+      min-height: 0;
+    }
+    .panel h2 {
+      margin: 0 0 0.75rem;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .dropzone {
+      border: 1.5px dashed #9a9386;
+      border-radius: 8px;
+      padding: 1.5rem 1rem;
+      text-align: center;
+      color: var(--muted);
+      background: #faf7f1;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--ink);
+    }
+    .dropzone strong { color: var(--ink); }
+    .file-meta {
+      margin: 0.75rem 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    button, .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 6px;
+      background: var(--accent);
+      color: white;
+      padding: 0.65rem 0.9rem;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .doc-list {
+      list-style: none;
+      margin: 1rem 0 0;
+      padding: 0;
+      max-height: 280px;
+      overflow: auto;
+    }
+    .doc-list li {
+      border-top: 1px solid var(--line);
+      padding: 0.55rem 0;
+      cursor: pointer;
+    }
+    .doc-list li:hover, .doc-list li.active { color: var(--accent); }
+    .doc-list .status {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    #viewer {
+      position: relative;
+      overflow: auto;
+      max-height: calc(100vh - 140px);
+      background: #e7e2d8;
+      border-radius: 8px;
+      padding: 0.75rem;
+    }
+    .page-wrap {
+      position: relative;
+      margin: 0 auto 1rem;
+      width: fit-content;
+      box-shadow: 0 8px 24px rgba(28, 27, 25, 0.12);
+    }
+    .page-wrap canvas { display: block; }
+    .hl {
+      position: absolute;
+      background: var(--hl);
+      border: 1px solid rgba(180, 120, 0, 0.7);
+      pointer-events: none;
+      border-radius: 2px;
+    }
+    .hl.active {
+      background: rgba(15, 92, 76, 0.35);
+      border-color: var(--accent);
+    }
+    .error {
+      color: var(--warn);
+      background: #f8e8dc;
+      border: 1px solid #e2c2a8;
+      border-radius: 6px;
+      padding: 0.6rem 0.75rem;
+      margin: 0.5rem 0;
+      font-size: 0.9rem;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+    .field {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+      cursor: pointer;
+      background: #fff;
+    }
+    .field:hover, .field.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .field .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+    .field .value {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.95rem;
+      margin-top: 0.15rem;
+      word-break: break-all;
+    }
+    .field .conf {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .meta-row span:last-child { text-align: right; word-break: break-all; }
+    a { color: var(--accent); }
+    .empty { color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Document Handler</h1>
+    <p>Upload a shipping PDF, extract fields, and inspect source highlights.</p>
+  </header>
+
+  <main>
+    <section class="panel" id="upload-panel">
+      <h2>Upload</h2>
+      <div class="dropzone" id="dropzone">
+        <strong>Drop a PDF here</strong>
+        <div>or click to choose a file</div>
+      </div>
+      <input id="file-input" type="file" accept="application/pdf" hidden />
+      <div class="file-meta" id="file-meta">No file selected.</div>
+      <div class="actions">
+        <button id="submit-btn" disabled>Submit &amp; extract</button>
+        <button class="secondary" id="refresh-list-btn" type="button">Refresh list</button>
+      </div>
+      <p class="error" id="upload-error" hidden></p>
+
+      <h2 style="margin-top: 1.25rem;">Your files</h2>
+      <ul class="doc-list" id="doc-list"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>PDF preview</h2>
+      <div id="viewer"><p class="empty">Select or upload a document to preview it.</p></div>
+    </section>
+
+    <section class="panel" id="results-panel">
+      <h2>Results</h2>
+      <div id="results"><p class="empty">Extracted metadata will appear here.</p></div>
+    </section>
+  </main>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const FIELD_LABELS = {
+      bill_of_lading_number: "Bill of lading number",
+      invoice_number: "Invoice number",
+      shipper_name: "Shipper name",
+      shipper_address: "Shipper address",
+      consignee_name: "Consignee name",
+      consignee_address: "Consignee address",
+      total_value_of_goods: "Total value of goods",
+    };
+
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("file-input");
+    const fileMeta = document.getElementById("file-meta");
+    const submitBtn = document.getElementById("submit-btn");
+    const uploadError = document.getElementById("upload-error");
+    const docList = document.getElementById("doc-list");
+    const viewer = document.getElementById("viewer");
+    const results = document.getElementById("results");
+
+    let selectedFile = null;
+    let activeHighlights = {};
+    let activeField = null;
+
+    async function ensureAuth() {
+      const res = await fetch("/auth/demo", { method: "POST", credentials: "same-origin" });
+      if (!res.ok) throw new Error("Could not start demo session");
+    }
+
+    function showError(el, message) {
+      if (!message) {
+        el.hidden = true;
+        el.textContent = "";
+        return;
+      }
+      el.hidden = false;
+      el.textContent = message;
+    }
+
+    function setFile(file) {
+      selectedFile = file && file.type === "application/pdf" ? file : null;
+      submitBtn.disabled = !selectedFile;
+      fileMeta.textContent = selectedFile
+        ? `${selectedFile.name} (${Math.round(selectedFile.size / 1024)} KB)`
+        : "No file selected.";
+      if (selectedFile) {
+        const url = URL.createObjectURL(selectedFile);
+        renderPdf(url, {});
+      }
+    }
+
+    dropzone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
+    ["dragenter", "dragover"].forEach((evt) => {
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+    });
+    ["dragleave", "drop"].forEach((evt) => {
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+      });
+    });
+    dropzone.addEventListener("drop", (e) => {
+      const file = e.dataTransfer.files[0];
+      setFile(file);
+    });
+
+    document.getElementById("refresh-list-btn").addEventListener("click", loadDocumentList);
+    submitBtn.addEventListener("click", submitFile);
+
+    async function submitFile() {
+      if (!selectedFile) return;
+      showError(uploadError, "");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Working…";
+      try {
+        await ensureAuth();
+        const body = new FormData();
+        body.append("file", selectedFile);
+        const res = await fetch("/documents", {
+          method: "POST",
+          body,
+          credentials: "same-origin",
+        });
+        const data = await res.json();
+        if (!res.ok && !data.document) {
+          throw new Error(data.error || `Upload failed (${res.status})`);
+        }
+        await showDocument(data.document, data.error);
+        await loadDocumentList(data.document.id);
+        if (data.error) showError(uploadError, data.error);
+      } catch (err) {
+        showError(uploadError, err.message || String(err));
+      } finally {
+        submitBtn.disabled = !selectedFile;
+        submitBtn.textContent = "Submit & extract";
+      }
+    }
+
+    async function loadDocumentList(activeId) {
+      await ensureAuth();
+      const res = await fetch("/documents", { credentials: "same-origin" });
+      const data = await res.json();
+      if (!res.ok) {
+        docList.innerHTML = `<li class="empty">${data.error || "Could not load files"}</li>`;
+        return;
+      }
+      if (!data.documents.length) {
+        docList.innerHTML = `<li class="empty">No uploads yet.</li>`;
+        return;
+      }
+      docList.innerHTML = data.documents.map((doc) => `
+        <li data-id="${doc.id}" class="${doc.id === activeId ? "active" : ""}">
+          ${escapeHtml(doc.original_filename)}
+          <span class="status">${escapeHtml(doc.upload_status)}</span>
+        </li>
+      `).join("");
+      docList.querySelectorAll("li[data-id]").forEach((li) => {
+        li.addEventListener("click", () => openDocument(li.dataset.id));
+      });
+    }
+
+    async function openDocument(id) {
+      await ensureAuth();
+      const res = await fetch(`/documents/${id}`, { credentials: "same-origin" });
+      const doc = await res.json();
+      if (!res.ok) {
+        showError(uploadError, doc.error || "Could not open document");
+        return;
+      }
+      await showDocument(doc, doc.upload_error);
+      await loadDocumentList(id);
+    }
+
+    async function showDocument(doc, errorMessage) {
+      renderResults(doc, errorMessage);
+      activeHighlights = doc.field_highlights || {};
+      activeField = null;
+      if (doc.view_url) {
+        await renderPdf(doc.view_url, activeHighlights);
+      }
+    }
+
+    function renderResults(doc, errorMessage) {
+      const scores = doc.field_confidence_scores || {};
+      const extractedKeys = Object.keys(FIELD_LABELS);
+      const fieldHtml = extractedKeys.map((key) => {
+        const value = doc[key];
+        if (value == null || value === "") return "";
+        const conf = scores[key];
+        const confText = conf == null ? "n/a" : `${Math.round(conf * 100)}%`;
+        return `
+          <div class="field" data-field="${key}">
+            <div class="label">${FIELD_LABELS[key]}</div>
+            <div class="value">${escapeHtml(String(value))}</div>
+            <div class="conf">Confidence: ${confText}</div>
+          </div>
+        `;
+      }).join("");
+
+      const lineItems = Array.isArray(doc.line_items) ? doc.line_items : [];
+      const lineItemsHtml = lineItems.length
+        ? `<div class="field" data-field="line_items">
+             <div class="label">Line items</div>
+             <div class="value">${lineItems.map((item, idx) => {
+               const bits = [
+                 item.quantity != null ? `qty ${item.quantity}` : null,
+                 item.description || null,
+                 item.value != null ? `value ${item.value}` : null,
+                 item.hts_code ? `HTS ${item.hts_code}` : null,
+               ].filter(Boolean);
+               return `${idx + 1}. ${escapeHtml(bits.join(" · "))}`;
+             }).join("<br/>")}</div>
+             <div class="conf">Confidence: ${
+               scores.line_items == null ? "n/a" : `${Math.round(scores.line_items * 100)}%`
+             }</div>
+           </div>`
+        : "";
+
+      results.innerHTML = `
+        ${errorMessage ? `<p class="error">${escapeHtml(errorMessage)}</p>` : ""}
+        <div class="kv" style="margin-bottom: 1rem;">
+          <div class="meta-row"><span>Filename</span><span>${escapeHtml(doc.original_filename || "")}</span></div>
+          <div class="meta-row"><span>Status</span><span>${escapeHtml(doc.upload_status || "")}</span></div>
+          <div class="meta-row"><span>Document ID</span><span>${escapeHtml(doc.id || "")}</span></div>
+          <div class="meta-row"><span>Overall confidence</span><span>${
+            doc.overall_confidence == null ? "n/a" : `${Math.round(doc.overall_confidence * 100)}%`
+          }</span></div>
+          <div class="meta-row"><span>Download</span><span><a href="${doc.download_url || "#"}" target="_blank" rel="noopener">PDF file</a></span></div>
+        </div>
+        <h2>Extracted fields</h2>
+        <div class="kv" id="field-cards">
+          ${fieldHtml || ""}${lineItemsHtml || ""}${
+            !fieldHtml && !lineItemsHtml ? `<p class="empty">No extracted fields.</p>` : ""
+          }
+        </div>
+      `;
+
+      results.querySelectorAll(".field[data-field]").forEach((card) => {
+        card.addEventListener("click", () => {
+          activeField = card.dataset.field;
+          results.querySelectorAll(".field").forEach((el) => {
+            el.classList.toggle("active", el.dataset.field === activeField);
+          });
+          paintHighlightClasses();
+          const box = activeHighlights[activeField];
+          if (box) {
+            const page = viewer.querySelector(`[data-page="${box.page}"]`);
+            if (page) page.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        });
+      });
+    }
+
+    async function renderPdf(url, highlights) {
+      viewer.innerHTML = `<p class="empty">Loading PDF…</p>`;
+      try {
+        const loadingTask = pdfjsLib.getDocument({
+          url,
+          withCredentials: true,
+        });
+        const pdf = await loadingTask.promise;
+        viewer.innerHTML = "";
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.15 });
+          const wrap = document.createElement("div");
+          wrap.className = "page-wrap";
+          wrap.dataset.page = String(pageNum - 1);
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          wrap.appendChild(canvas);
+          viewer.appendChild(wrap);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+
+          Object.entries(highlights || {}).forEach(([field, box]) => {
+            if (!box || box.page !== pageNum - 1) return;
+            const [x1, y1, x2, y2] = viewport.convertToViewportRectangle([
+              box.x0, box.y0, box.x1, box.y1,
+            ]);
+            const el = document.createElement("div");
+            el.className = "hl";
+            el.dataset.field = field;
+            el.style.left = `${Math.min(x1, x2)}px`;
+            el.style.top = `${Math.min(y1, y2)}px`;
+            el.style.width = `${Math.abs(x2 - x1)}px`;
+            el.style.height = `${Math.abs(y2 - y1)}px`;
+            wrap.appendChild(el);
+          });
+        }
+        paintHighlightClasses();
+      } catch (err) {
+        viewer.innerHTML = `<p class="error">${escapeHtml(err.message || String(err))}</p>`;
+      }
+    }
+
+    function paintHighlightClasses() {
+      viewer.querySelectorAll(".hl").forEach((el) => {
+        el.classList.toggle("active", !!activeField && el.dataset.field === activeField);
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    ensureAuth()
+      .then(() => loadDocumentList())
+      .catch((err) => showError(uploadError, err.message || String(err)));
+  </script>
+</body>
+</html>
